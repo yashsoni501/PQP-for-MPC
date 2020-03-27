@@ -470,6 +470,17 @@ void solveQuadraticDual(double **Y, double **x, double **Qd, double **Sd, double
 	}
 }
 
+void computeUfromY(double **U, double **Y, double **Td, double **x, double **Ed, int N)
+{
+	matrixMultiply(U, Td, 0, x, 0, N, N, 1);
+
+	double **tmp = newMatrix(N,1);
+	matrixMultiply(tmp, Ed, 0, Y, 0, N, N, 1);
+
+	matrixAdd(U, tmp, 1, N, 1);
+	deleteMatrix(tmp, N);
+}
+
 int main()
 {
 	// QP is of parametric from 
@@ -505,5 +516,7 @@ int main()
 	convertFromParametricToDual(Qd, Sd, Wd, Od, Qp, Cp, Op, Gp, Sp, W, Td, Ed, N);
 
 	solveQuadraticDual(Y, x, Qd, Sd, Wd, Od, Sp, W, N);
+
+	computeUfromY(U, Y, Td, x, Ed, N);
 
 }
