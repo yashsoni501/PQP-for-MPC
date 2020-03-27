@@ -45,10 +45,89 @@ void deleteMatrix(double **Mat, int m)
 	free(Mat);
 }
 
-void computeInv(double **invMat, double **Mat, int N)
-{
+void getCofactor(double **mat, double **temp, int p, int q, int n) 
+{ 
+    int i = 0, j = 0; 
+  
+    for (int row = 0; row < n; row++) 
+    { 
+        for (int col = 0; col < n; col++) 
+        {  
+            if (row != p && col != q) 
+            { 
+                temp[i][j++] = mat[row][col]; 
+   
+                if (j == n - 1) 
+                { 
+                    j = 0; 
+                    i++; 
+                } 
+            } 
+        } 
+    } 
+} 
 
-}
+double determinant(double **mat, int n) 
+{ 
+    double D = 0;
+  
+    if (n == 1) 
+        return mat[0][0]; 
+  
+    double **temp = newMatrix(n-1,n-1); 
+    int sign = 1;   
+
+    for (int f = 0; f < n; f++) 
+    { 
+        getCofactor(mat, temp, 0, f, n); 
+        D += sign * mat[0][f] * determinant(temp, n - 1); 
+  
+        sign = -sign; 
+    } 
+
+    deleteMatrix(temp, n-1);
+    return D; 
+} 
+
+
+void adjoint(double **A, double **adj, int N) 
+{ 
+    if (N == 1) 
+    { 
+        adj[0][0] = 1; 
+        return; 
+    } 
+  
+    int sign = 1;
+    double **temp = newMatrix(N,N);
+  
+    for (int i=0; i<N; i++) 
+    { 
+        for (int j=0; j<N; j++) 
+        { 
+            getCofactor(A, temp, i, j, N); 
+ 
+            adj[j][i] = (sign)*(determinant(temp, N-1)); 
+        } 
+    } 
+} 
+
+void computeInv(double **invMat, double **mat, int N) 
+{ 
+    double det = determinant(mat, N); 
+    if (det == 0) 
+    { 
+        printf("Singular matrix, can't find its inverse\n");
+        exit(0); 
+    } 
+  
+    double **adj = newMatrix(N,N); 
+    adjoint(mat, adj, N); 
+  
+    for (int i=0; i<N; i++) 
+        for (int j=0; j<N; j++) 
+            invMat[i][j] = adj[i][j]/det; 
+} 
 
 void copyMatrix(double **output, double **mat, int a, int b)
 {
@@ -131,50 +210,6 @@ void matrixNeg(double **mat1, double **mat2, int n, int m)
 		}
 	}
 }
-
-void getCofactor(double **mat, double **temp, int p, int q, int n) 
-{ 
-    int i = 0, j = 0; 
-  
-    for (int row = 0; row < n; row++) 
-    { 
-        for (int col = 0; col < n; col++) 
-        {  
-            if (row != p && col != q) 
-            { 
-                temp[i][j++] = mat[row][col]; 
-   
-                if (j == n - 1) 
-                { 
-                    j = 0; 
-                    i++; 
-                } 
-            } 
-        } 
-    } 
-} 
-
-double determinantOfMatrix(double **mat, int n) 
-{ 
-    double D = 0;
-  
-    if (n == 1) 
-        return mat[0][0]; 
-  
-    double **temp = newMatrix(n-1,n-1); 
-    int sign = 1;   
-
-    for (int f = 0; f < n; f++) 
-    { 
-        getCofactor(mat, temp, 0, f, n); 
-        D += sign * mat[0][f] * determinantOfMatrix(temp, n - 1); 
-  
-        sign = -sign; 
-    } 
-
-    deleteMatrix(temp, n-1);
-    return D; 
-} 
 
 void isSymmetric(double **mat, int N, int &b)
 {
