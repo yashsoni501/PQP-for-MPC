@@ -1,0 +1,12 @@
+void initMat(float *mat, float val, int N);
+void copyMatrix(float *output, float *mat, int a, int b);
+void transpose(float *odata, float *idata, int n, int m);
+void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int transpose2, int a, int b, int c); 
+void matrixAdd(float *A, float *B, float sign, int a, int b);
+void negateMatrix(float *mat, int n, int m)	;
+void matrixPos(float *mat1, float *mat2, int n, int m);
+void matrixNeg(float *mat1, float *mat2, int n, int m);
+void diagonalAdd(float *theta, float *tmp, int N);
+void compare(float *GpU, float *Kp, int *re, int N);
+void updY(float *Y_next, float *numerator, float *denominator, float *Y, int N)   // parallel
+

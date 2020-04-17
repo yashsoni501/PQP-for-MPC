@@ -307,8 +307,10 @@ void computeFd(float *Fd, float *Gp_Qp_inv, float *Fp, float *Kp, int N, int M)
 
 void computeMd(float *Md, float *Fp, float* Qp_inv, float* Mp, int N, int M)
 {
-	matrixMultiply(Md, Fp, 1, Qp_inv, 0, 1, M, M);
-	matrixMultiply(Md, Md, 0, Fp, 0, 1, M, 1);
+	float *tmp = newMatrix(1,M);
+	matrixMultiply(tmp, Fp, 1, Qp_inv, 0, 1, M, M);
+	matrixMultiply(Md, tmp, 0, Fp, 0, 1, M, 1);
+	free(tmp);
 	Md[0] -= Mp[0];
 }
 
@@ -400,19 +402,13 @@ void updY(float *Y_next, float *numerator, float *denominator, float *Y, int N) 
 	}
 }
 
-void updateY2(float *Y_next, float *Y, float *Qdp_theta, float *Qdn_theta, float *Fd, int N)
+void updateY2(float *Y_next, float *Y, float *Qdp_theta, float *Qdn_theta, float *Fd, float *Fdp, float *Fdn, int N)
 {
 	float *numerator = newMatrix(N,1);
 	float *denominator = newMatrix(N,1);
 
 	matrixMultiply(numerator, Qdn_theta, 0, Y, 0, N, N, 1);
 	matrixMultiply(denominator, Qdp_theta, 0, Y, 0, N, N, 1);
-
-	float *Fdn = newMatrix(N,1);
-	float *Fdp = newMatrix(N,1);
-
-	matrixPos(Fdp, Fd, N, 1);
-	matrixNeg(Fdn, Fd, N, 1);
 
 	matrixAdd(numerator, Fdn, 1, N, 1);
 	matrixAdd(denominator, Fdp, 1, N, 1);
@@ -436,7 +432,7 @@ int checkFeas(float *U, float *Gp, float *Kp, int N, int M)
 	matrixMultiply(tmp, Gp, 0, U, 0, N, M, 1);
 	int re = 1;
 	compare(tmp, Kp, &re, N);
-	if(!re) printf("0\n");
+	// if(!re) printf("0\n");
 	free(tmp);
 	return re;
 }	
@@ -470,6 +466,7 @@ int terminate(float *Y, float *Qd, float *Fd, float *Md, float *U, float *Qp, fl
 	float Jd = computeCost(Y, Qd, Fd, Md, N);
 	float Jp = computeCost(U, Qp, Fp, Mp, M);
 
+	if(Jp>-Jd)	return 0;
 	if(Jp+Jd>eaj)	return 0;
 	if((Jp+Jd)/fabs(Jd)>erj) return 0;
 
@@ -482,12 +479,17 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	float *Qdp_theta = newMatrix(N,N);
 	float *Qdn_theta = newMatrix(N,N);
 	float *Y_next = newMatrix(N,1);
+	float *Fdn = newMatrix(N,1);
+	float *Fdp = newMatrix(N,1);
+
+	matrixPos(Fdp, Fd, N, 1);
+	matrixNeg(Fdn, Fd, N, 1);
 
 	computeTheta(theta, Qd, N);
 	computeQdp_theta(Qdp_theta, Qd, theta, N);
 	computeQdn_theta(Qdn_theta, Qd, theta, N);
 
-	initMat(Y, 10000.0, N);
+	initMat(Y, 100000.0, N);
 	// for(int i=0;i<N;i++) Y[i] = i+1;
 	int term1=0, term2 = 0;
 
@@ -503,7 +505,7 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 		{
 			//update
 			// printf("here\n");
-			updateY2(Y_next, Y, Qdp_theta, Qdn_theta, Fd, N);			
+			updateY2(Y_next, Y, Qdp_theta, Qdn_theta, Fd, Fdp, Fdn, N);			
 			// printf("there\n");
 		}
 		else
@@ -534,6 +536,8 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	free(Qdn_theta);
 	free(Y_next);
 	free(ph);
+	free(Fdp);
+	free(Fdn);
 }
 
 void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, float * Mp2, float * Mp3, float* Mp4, float* Mp5, float* Mp6, float* Gp, float* Kp, float* x, float* D, float* theta, float* Z)
@@ -780,6 +784,12 @@ int main()
 	D = newMatrix(nDis*pHorizon,1);
 	x = newMatrix(nState, 1);
 
+	float *Qd = newMatrix(N,N);
+	float *Fd = newMatrix(N,1);
+	float *Md = newMatrix(1,1);	
+	float *Y  = newMatrix(N,1);
+	float *U  = newMatrix(M,1);
+
 	input(Qp_inv, Fp1, Fp2, Fp3, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, Gp, Kp, x, D, theta, Z);
 	Gauss_Jordan(Qp_inv, Qp, M);
 
@@ -788,11 +798,7 @@ int main()
 	// printf("Mp %f\n", Mp[0]);
 	// printf("er\n");
 	// matrices and vectors required for dual form of QP
-	float *Qd = newMatrix(N,N);
-	float *Fd = newMatrix(N,1);
-	float *Md = newMatrix(1,1);	
-	float *Y  = newMatrix(N,1);
-	float *U  = newMatrix(M,1);
+	
 	// printf("er\n");
 	convertToDual(Qd, Fd, Md, Qp_inv, Gp, Kp, Fp, Mp, N, M);
 	// printf("Qd\n");
@@ -833,6 +839,15 @@ int main()
 	// U[5] = -10.643004;
 	// U[6] = -6.398996;
 
+	// U[0] = -6.340771;
+	// U[1] = -10.646728;
+	// U[2] = -4.776842;
+	// U[3] = -2.108329;
+	// U[4] = -4.776972;
+	// U[5] = -10.643004;
+	// U[6] = -6.340781;
+
+
 	float Jp = computeCost(U, Qp, Fp, Mp, M);
 	float Jd = computeCost(Y, Qd, Fd, Md, N);
 
@@ -869,4 +884,10 @@ int main()
 	free(D);
 	free(theta);
 	free(Z);
+
+	free(Qd);
+	free(Fd);
+	free(Md);
+	free(Y);
+	free(U);
 }
