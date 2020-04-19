@@ -1,3 +1,11 @@
+/**************************************************************************
+* This file contains implementation of pqp (parallel quadratic programming)
+* CPU version for MPC Term Project of HP3 Course.
+* Group 7 CSE Dept. IIT KGP
+*	Objective function: 1/2 U'QpU + Fp'U + 1/2 Mp
+*	Constraints: GpU <= Kp
+**************************************************************************/
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
@@ -15,13 +23,25 @@
 
 #define NUM_ITER 1000
 
+
+/**************************************************************************
+* This is utility function used to find maximum
+*   1. Parameter is float type
+*   2. Return float type max value
+**************************************************************************/
 float max(float a, float b)
 {
 	if(a>b)	return a;
 	else return b;
 }
 
-void initMat(float *mat, float val, int N)								// parallel
+/**************************************************************************
+* This is utility function initialize the matrix
+*   1. Parameter is float type matrix pointer (*mat), float val, 
+*		size of matrix 
+*   2. Return type void
+**************************************************************************/
+void initMat(float *mat, float val, int N)								
 {
 	for(int i=0;i<N;i++)	
 	{
@@ -29,6 +49,12 @@ void initMat(float *mat, float val, int N)								// parallel
 	}
 }
 
+/**************************************************************************
+* This is utility function for create new  matrix
+*   1. Parameter is (int n, int m) dimension of (n X m matrix) , 
+*	2. Return pointer of new matrix
+*   3. This function create dynamic size matrix using malloc
+**************************************************************************/
 float *newMatrix(int n, int m)			
 {
 	float *tmp = (float *)malloc(n*m*sizeof(float));
@@ -36,13 +62,24 @@ float *newMatrix(int n, int m)
 	return tmp;
 }
 
-void copyMatrix(float *output, float *mat, int a, int b)		// parallel
+/**************************************************************************
+* This is utility function for making copy of a matrix
+*   1. Parameter is (pointer of output, pointer of input int n, int m)
+*		dimension of (n X m matrix) , 
+*	2. Return pointer of new matrix   
+**************************************************************************/
+void copyMatrix(float *output, float *mat, int a, int b)		
 {
 	for(int i=0;i<a*b;i++)
 	{
 		output[i] = mat[i];
 	}
 }
+/**************************************************************************
+* This is utility function generate transpose of matrix
+*   1. Parameter is (pointer of mat, pointer of input int n, int m)
+*		dimension of (n X m matrix) 
+**************************************************************************/
 
 float transpose(float *mat, int tr, int i, int j, int n, int m)
 {
@@ -52,23 +89,12 @@ float transpose(float *mat, int tr, int i, int j, int n, int m)
 		return mat[i*m+j];
 }
 
-// void transposeMatrix(float *mat, int m, int n)
-// {
-// 	float *tps = newMatrix(n,m);
-// 	for(int i=0;i<n;i++)
-// 	{
-// 		for(int j=0;j<m;j++)
-// 		{
-// 			tps[i*m+j] = mat[j*n+i];
-// 		}
-// 	}
-// 	float *tmp = mat;
-// 	mat = tps;
-
-// 	// free(tmp);
-// }
-
-void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int transpose2, int a, int b, int c) 		//mat1-a*b	mat2-b*c 	// parallel
+/**************************************************************************
+* This is utility function generate transpose of matrix
+*   1. Parameter is (pointer of mat, pointer of input int n, int m)
+*		dimension of (n X m matrix) 
+**************************************************************************/
+void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int transpose2, int a, int b, int c) 		//mat1-a*b	mat2-b*c 	
 {
 	float *tmp = newMatrix(a,c);
 
@@ -88,15 +114,29 @@ void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int
 	free(tmp);
 }
 
-void matrixAdd(float *A, float *B, int sign, int a, int b) 			// adds b to a 	// parallel
+/**************************************************************************
+* This is utility function for generating addition or substraction 
+*	of two matrix
+*   1. Parameter is (pointer of matrix1, pointer of matrix2, float sign,int n int m)
+*		dimension of (n X m matrix) 
+*	2. sign parameters for decide addition or substraction
+*	3. Result write back in matrix1
+**************************************************************************/
+void matrixAdd(float *A, float *B, float sign, int a, int b) 			// adds b to a 	
 {
 	for(int i=0;i<a*b;i++)
 	{
 		A[i] += sign * B[i];
 	}
 }
-
-void negateMatrix(float *mat, int n, int m)			// parallel
+/**************************************************************************
+* This is utility function for generating negation of matrix elementwise 
+*	of matrix
+*   1. Parameter is (pointer of matrix1,int n int m)
+*		dimension of (n X m matrix)
+*	2. Result write back in matrix1
+**************************************************************************/
+void negateMatrix(float *mat, int n, int m)			
 {
 	for(int i=0;i<n*m;i++)
 	{
@@ -104,7 +144,16 @@ void negateMatrix(float *mat, int n, int m)			// parallel
 	}
 }
 
-void matrixPos(float *mat1, float *mat2, int n, int m)			// parallel
+/**************************************************************************
+* This is utility function for generating positive of matrix elementwise 
+*	of matrix
+*   1. Parameter is (pointer of matrix1,pointer of matrix2,int n int m)
+*		dimension of (n X m matrix)
+*	2. Result in matrix1
+*	3. This function utilised during Qd_plus, Fd_plus generation
+*	4. This function uses max function defined above
+**************************************************************************/
+void matrixPos(float *mat1, float *mat2, int n, int m)			
 {
 	for(int i=0;i<n*m;i++)
 	{
@@ -112,8 +161,16 @@ void matrixPos(float *mat1, float *mat2, int n, int m)			// parallel
 
 	}
 }
-
-void matrixNeg(float *mat1, float *mat2, int n, int m)			// parallel
+/**************************************************************************
+* This is utility function for generating negative of matrix elementwise 
+*	of matrix
+*   1. Parameter is (pointer of matrix1,pointer of matrix2,int n int m)
+*		dimension of (n X m matrix)
+*	2. Result in matrix1
+*	3. This function utilised during Qd_minus, Fd_minus generation
+*	4. This function uses max function defined above
+**************************************************************************/
+void matrixNeg(float *mat1, float *mat2, int n, int m)			
 {
 	for(int j=0;j<n*m;j++)
 	{
@@ -121,7 +178,7 @@ void matrixNeg(float *mat1, float *mat2, int n, int m)			// parallel
 	}
 }
 
-void isSymmetric(float *mat, int N, int b)			// parallel
+void isSymmetric(float *mat, int N, int b)			
 {
 	for(int i=0;i<N;i++)
 	{
@@ -134,8 +191,16 @@ void isSymmetric(float *mat, int N, int b)			// parallel
 		}
 	}
 }
-
-void diagonalAdd(float *theta, float *tmp, int N)			// parallel
+/**************************************************************************
+* This is utility function for diagonal addition matrix elementwise 
+*	of matrix
+*   1. Parameter is (pointer of matrix1,pointer of matrix2,int N)
+*		dimension of (n X m matrix)
+*	2. Result in matrix1
+*	3. This function utilised during Qd_minus+theta, Qd_plus+theta generation
+*	4. This function uses max function defined above
+**************************************************************************/
+void diagonalAdd(float *theta, float *tmp, int N)			
 {
 	for(int i=0;i<N;i++)
 	{
@@ -143,7 +208,14 @@ void diagonalAdd(float *theta, float *tmp, int N)			// parallel
 		theta[i*N+i] = max(tmp[i],5);
 	}
 }
-
+/**************************************************************************
+* This is utility function for finding inversion matrix 
+*   1. Parameter is (pointer of matrix1,pointer of matrix2,int N)
+*		dimension of (n X m matrix)
+*	2. Result in res matrix
+*	3. This function utilised during Qd_minus+theta, Qd_plus+theta generation
+*	4. This function uses max function defined above
+**************************************************************************/
 void Gauss_Jordan(float *A,float *res, int N)
 {
     /*
@@ -221,7 +293,13 @@ void Gauss_Jordan(float *A,float *res, int N)
     free(matrix);
 }
 
-int compare(float *GpU, float *Kp, int *re, int N)				// parallel
+/**************************************************************************
+* This is utility function for two matrix 
+*   1. Parameter is (pointer of matrix1,pointer of matrix2,int N)
+*		dimension of (n X m matrix)
+*	2. Result in res matrix
+**************************************************************************/
+int compare(float *GpU, float *Kp, int *re, int N)				
 {
 	for(int i=0;i<N;i++)
 	{
@@ -231,6 +309,13 @@ int compare(float *GpU, float *Kp, int *re, int N)				// parallel
 		}
 	}
 }
+/**************************************************************************
+* This is PQP utility function for compute U from Y
+*   1. Parameter is (pointer of U vector,pointer of Y vector,
+		pointer of Fp, pointer of Gp, pointer of Qp_inv,int N, int M)
+*		dimension of (n X m matrix)
+*	2. Result in Vector U
+**************************************************************************/
 
 void computeUfromY(float *U, float *Y, float *Fp, float *Gp, float *Qp_inv, int N, int M)
 {
@@ -242,6 +327,17 @@ void computeUfromY(float *U, float *Y, float *Fp, float *Gp, float *Qp_inv, int 
 	free(tmp);
 }
 
+/**************************************************************************
+* This is PQP utility function for compute Fp from Fp1, Fp2, Fp3
+*   1. Parameter is (pointer of Fp,pointer of Fp1,
+		pointer of Fp2, pointer of Fp3, pointer of D, ponter of x)
+*		dimension of (n X m matrix)
+*	2. Result in Fp
+*   Formula for Fp generation
+*		Fp = Fp1*D+Fp2*x-Fp3
+*  This function uses utility function matrixMultiply(), matrixAdd() defined above
+**************************************************************************/
+
 void computeFp(float *Fp, float *Fp1, float *Fp2, float *Fp3, float *D, float *x)
 {
 	matrixMultiply(Fp, Fp1, 0, D, 0, nInput*pHorizon, nDis*pHorizon, 1);
@@ -250,15 +346,20 @@ void computeFp(float *Fp, float *Fp1, float *Fp2, float *Fp3, float *D, float *x
 	matrixAdd(Fp, Fp2x, 1, nInput*pHorizon, 1);
 	matrixAdd(Fp, Fp3, -1, nInput*pHorizon, 1);
 	
-	free(Fp2x);	
-	// for(int i=0;i<nInput*pHorizon;i++)
-	// {
-	// 	printf("%f\n", Fp[i]);
-	// }
-	// printf("\n");
-	// printf("%d\n", Fp);
+	free(Fp2x);		
 }
+/**************************************************************************
+* This is PQP utility function for compute Mp from Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, X
+*   1. Parameter is (pointer of Mp,pointer of Mp1,
+		pointer of Mp2, pointer of Mp3,pointer of Mp4, pointer of Mp5,
+		pointer of Mp6,pointer of D, ponter of x)
 
+*	2. Result in Mp
+*   Formula for Mp generation
+*	Mp= 0.5 .* x'*Mp1*x + D'*Mp2*x+ 0.5 .*D'*Mp3*D - 0.5 .*Mp4*x - 0.5.*Mp5*D+0.5*Mp6
+	[ Where, '=> transpose operation and .* => element wise multiplication]
+*  This function uses utility function matrixMultiply(), matrixAdd() defined above
+**************************************************************************/
 void computeMp(float *Mp, float *Mp1, float *Mp2, float *Mp3, float *Mp4, float *Mp5, float *Mp6, float *D, float *x)
 {
 	Mp[0] = 0;
@@ -293,18 +394,49 @@ void computeMp(float *Mp, float *Mp1, float *Mp2, float *Mp3, float *Mp4, float 
 
 	free(tmp);
 }
+/**************************************************************************
+* This is PQP utility function for compute Qd
+*   1. Parameter is (pointer of Qd,pointer of Gp_Qp_inv,
+		pointer of Gp, int N, int M)
 
+*	2. Result in Qd
+*   Formula for Qd generation
+*	Qd= 
+	[ Where, '=> transpose operation and .* => element wise multiplication]
+*  This function uses utility function matrixMultiply(), matrixAdd() defined above
+**************************************************************************/
 void computeQd(float *Qd, float *Gp_Qp_inv, float *Gp, int N, int M)
 {
 	matrixMultiply(Qd, Gp_Qp_inv, 0, Gp, 1, N, M, N);	
 }
 
+/**************************************************************************
+* This is PQP utility function for compute Fd
+*   1. Parameter is (pointer of Fd,pointer of Gp_Qp_inv,
+		pointer of Fp, pointer of Kp,int N, int M)
+
+*	2. Result in Fd
+*   Formula for Fd generation
+*	Fd= 
+	[ Where, '=> transpose operation and .* => element wise multiplication]
+*  This function uses utility function matrixMultiply(), matrixAdd() defined above
+**************************************************************************/
 void computeFd(float *Fd, float *Gp_Qp_inv, float *Fp, float *Kp, int N, int M)
 {
 	matrixMultiply(Fd, Gp_Qp_inv, 0, Fp, 0, N, M, 1);
 	matrixAdd(Fd, Kp, 1, N, 1);
 }
+/**************************************************************************
+* This is PQP utility function for compute Md
+*   1. Parameter is (pointer of Fd,pointer of Fp,pointer of Qp_inv,
+		 pointer of Mp,int N, int M)
 
+*	2. Result in Md
+*   Formula for Fd generation
+*	Md= 
+	[ Where, '=> transpose operation and .* => element wise multiplication]
+*  This function uses utility function matrixMultiply(), matrixAdd() defined above
+**************************************************************************/
 void computeMd(float *Md, float *Fp, float* Qp_inv, float* Mp, int N, int M)
 {
 	float *tmp = newMatrix(1,M);
@@ -313,7 +445,15 @@ void computeMd(float *Md, float *Fp, float* Qp_inv, float* Mp, int N, int M)
 	free(tmp);
 	Md[0] -= Mp[0];
 }
+/**************************************************************************
+* This is PQP utility function for convert primal to dual form of PQP
+*   1. Parameter is (pointer of Qd,pointer of Fd,pointer of Md,pointer of Qp_inv,
+		 pointer of Gp,pointer of Kp,pointer of Fp,pointer of Mp,int N, int M)
 
+*  This function uses utility function matrixMultiply(), matrixAdd()
+	computeQd(), computeFd(), computeMd()defined above
+*  temp variables to keep intermediate result
+**************************************************************************/
 void convertToDual(float *Qd, float *Fd, float *Md, float *Qp_inv, float *Gp, float *Kp, float *Fp, float *Mp, int N, int M)
 {	
 	float *Gp_Qp_inv = newMatrix(N,M);
@@ -324,7 +464,10 @@ void convertToDual(float *Qd, float *Fd, float *Md, float *Qp_inv, float *Gp, fl
 
 	free(Gp_Qp_inv);
 }
-
+/**************************************************************************
+* This is PQP utility function for compute theta 
+*   1. Parameter is (pointer of theta,pointer of Qd,int N)
+**************************************************************************/
 void computeTheta(float *theta, float *Qd, int N)
 {
 	float *Qdn = newMatrix(N,N);
@@ -342,19 +485,31 @@ void computeTheta(float *theta, float *Qd, int N)
 	free(one);
 	free(tmp);
 }
-
+/**************************************************************************
+* This is PQP utility function for compute Qd_plus + theta 
+*   1. Parameter is (pointer of theta,pointer of Qd,int N)
+**************************************************************************/
 void computeQdp_theta(float *Qdp_theta, float *Qd, float *theta, int N)
 {
 	matrixPos(Qdp_theta, Qd, N, N);
 	matrixAdd(Qdp_theta, theta, 1, N, N);
 }
-
+/**************************************************************************
+* This is PQP utility function for compute Qd_minus + theta 
+*   1. Parameter is (pointer of theta,pointer of Qd,int N)
+**************************************************************************/
 void computeQdn_theta(float *Qdn_theta, float *Qd, float *theta, int N)
 {
 	matrixNeg(Qdn_theta, Qd, N, N);
 	matrixAdd(Qdn_theta, theta, 1, N, N);
 }
 
+/**************************************************************************
+* This is PQP utility function for compute alpha Y 
+*   1. Parameter is (pointer,int N)
+*	2. use for acceleration
+
+**************************************************************************/
 void computealphaY(float *alphaY, float *ph, float *Qd, float *Y, float *Fd, int N)
 {
 	float *temp = newMatrix(1,N);
@@ -383,25 +538,36 @@ void computealphaY(float *alphaY, float *ph, float *Qd, float *Y, float *Fd, int
 
 	free(temp);
 }
+/**************************************************************************
+* This is PQP utility function for update Y1 
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
+**************************************************************************/
 void updateY1(float *Y_next, float *Y, float alphaY, float *ph, int N)
 {
 	copyMatrix(Y_next, Y, N, 1);
 	matrixAdd(Y_next, ph, alphaY, N, 1);
 }
+/**************************************************************************
+* This is PQP utility function for update Y1 
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
-void updY(float *Y_next, float *numerator, float *denominator, float *Y, int N)   // parallel
+**************************************************************************/
+void updY(float *Y_next, float *numerator, float *denominator, float *Y, int N)   
 {
 	for(int i=0;i<N;i++)
 	{
-		// if(denominator[i]<1e-6)	
-		// {
-		// printf("%f %f %f\n",Y[i], numerator[i], denominator[i]);
-		// }
 		Y_next[i] = numerator[i]/denominator[i]*Y[i];
 	}
 }
+/**************************************************************************
+* This is PQP utility function for update Y1 
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
+**************************************************************************/
 void updateY2(float *Y_next, float *Y, float *Qdp_theta, float *Qdn_theta, float *Fd, float *Fdp, float *Fdn, int N)
 {
 	float *numerator = newMatrix(N,1);
@@ -418,7 +584,12 @@ void updateY2(float *Y_next, float *Y, float *Qdp_theta, float *Qdn_theta, float
 	free(numerator);
 	free(denominator);
 }
+/**************************************************************************
+* This is PQP utility function for computeph for update acceleration
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
+**************************************************************************/
 void computeph(float *ph, float *Qd, float *Y, float *Fd, int N)
 {
 	matrixMultiply(ph, Qd, 0, Y, 0, N, N, 1);
@@ -436,7 +607,12 @@ int checkFeas(float *U, float *Gp, float *Kp, int N, int M)
 	free(tmp);
 	return re;
 }	
+/**************************************************************************
+* This is PQP utility function for cost
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
+**************************************************************************/
 float computeCost(float *Z, float *Q, float *F, float *M, int N)
 {
 	float J=0;
@@ -456,7 +632,12 @@ float computeCost(float *Z, float *Q, float *F, float *M, int N)
 
 	return J;
 }
+/**************************************************************************
+* This is PQP utility function for termination condition of iteration steps
+*   1. Parameter is (pointer,int N)
+*	2. 
 
+**************************************************************************/
 int terminate(float *Y, float *Qd, float *Fd, float *Md, float *U, float *Qp, float *Qp_inv, float *Fp, float *Mp, float *Gp, float *Kp, int N, int M)
 {
 	computeUfromY(U, Y, Fp, Gp, Qp_inv, N, M);
@@ -472,7 +653,12 @@ int terminate(float *Y, float *Qd, float *Fd, float *Md, float *U, float *Qp, fl
 
 	return 1;
 }
+/**************************************************************************
+* This is PQP utility function main function for solving quadratic dual
+*   1. Parameter is (pointer,int N)
+*	2. use for update intermediate Y during iteration
 
+**************************************************************************/
 void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, float *Qp, float *Qp_inv, float *Fp, float *Mp, float *Gp, float *Kp, int N, int M)
 {
 	float *theta = newMatrix(N,N);
@@ -489,7 +675,7 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	computeQdp_theta(Qdp_theta, Qd, theta, N);
 	computeQdn_theta(Qdn_theta, Qd, theta, N);
 
-	initMat(Y, 100000.0, N);
+	initMat(Y, 1000.0, N);
 	// for(int i=0;i<N;i++) Y[i] = i+1;
 	int term1=0, term2 = 0;
 
@@ -497,36 +683,28 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	long int h=1;
 	float alphaY=0;
 
-	// while(h<NUM_ITER)
+	
 	while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
 	{	
-		// if(h>100000) break;
+		
 		if(1)
 		{
-			//update
-			// printf("here\n");
+			
 			updateY2(Y_next, Y, Qdp_theta, Qdn_theta, Fd, Fdp, Fdn, N);			
-			// printf("there\n");
+			
 		}
 		else
 		{
-			// printf("accelerating\n");
-			// accelerate
+			
 			computeph(ph, Qd, Y, Fd, N);
-			computealphaY(&alphaY, ph, Qd, Y, Fd, N);
-			// printf("alpha %f\n", alphaY);
+			computealphaY(&alphaY, ph, Qd, Y, Fd, N);	
 			
 			updateY1(Y_next, Y, alphaY/10, ph, N);
 
 		}
 
 		copyMatrix(Y, Y_next, N, 1);
-		// for(int i=0;i<N;i++)
-		// {
-		// 	printf("%f ",Y[i]);
-		// }
-		// printf("\n\n");
-
+		
 		h++;
 	}
 	printf("Printing number of iterations = %ld\n",h);
@@ -540,6 +718,11 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	free(Fdn);
 }
 
+/**************************************************************************
+* This utitlity function for read input data from text file
+*  1. Pointer of variables use for store value
+*  2. input file kept in folder (examples) in inside the same folder where codes kept
+**************************************************************************/
 void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, float * Mp2, float * Mp3, float* Mp4, float* Mp5, float* Mp6, float* Gp, float* Kp, float* x, float* D, float* theta, float* Z)
 {
 	FILE *fptr;
@@ -715,31 +898,12 @@ void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, floa
 	fclose(fptr);
 }
 
+/**************************************************************************
+* This driver function
+**************************************************************************/
 int main()
 {
-	// QP is of parametric from 
-	// J(U) = min U 1/2*U'QpU + Fp'U + 1/2*Mp
-	// st GpU <= Kp
-
-
-	// float *tmp1 = newMatrix(10,10);
-	// float *tmp2 = newMatrix(10,10);
-	// float *tmp = NULL;
-	// for(int i=0;i<10;i++)
-	// {
-	// 	tmp1[11*i] = i;
-	// 	tmp2[11*i] = i;
-	// }
-	// matrixMultiply(tmp, tmp1, 0, tmp2, 0, 10, 10, 10);
-	// for(int i=0;i<10;i++)
-	// {
-	// 	for(int j=0;j<10;j++)
-	// 	{
-	// 		printf("%f ",tmp[10*i+j]);
-	// 	}
-	// 	printf("\n");
-	// }
-	// return 0;
+	
 	int N, M;
 
 	M = pHorizon*nInput;
@@ -795,57 +959,13 @@ int main()
 
 	computeFp(Fp, Fp1, Fp2, Fp3, D, x);
 	computeMp(Mp, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, x);
-	// printf("Mp %f\n", Mp[0]);
-	// printf("er\n");
-	// matrices and vectors required for dual form of QP
 	
-	// printf("er\n");
 	convertToDual(Qd, Fd, Md, Qp_inv, Gp, Kp, Fp, Mp, N, M);
-	// printf("Qd\n");
-	// for(int i=0;i<N;i++)
-	// {
-	// 	for(int j=0;j<N;j++)
-	// 	{
-	// 		printf("%f ", Qd[i*N+j]);
-	// 	}
-	// 	printf("\n");
-	// }
-	// printf("Fd\n");
-	// printf("%f\n", Md[0]);
-	// for(int i=0;i<N;i++)
-	// {
-	// 	printf("%f ", Fp[i]);
-	// }
-	// printf("\n");
+	
 	solveQuadraticDual(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M);
-	// printf("erer\n");
+	
 
 	computeUfromY(U, Y, Fp, Gp, Qp_inv, N, M);
-
-
-	// U[0] = -6.399018;
-	// U[1] = -10.648726;
-	// U[2] = -4.792378;
-	// U[3] = -7.033428;
-	// U[4] = -4.792378;
-	// U[5] = -10.648726;
-	// U[6] = -6.399018;
-
-	// U[0] = -6.398985;
-	// U[1] = -10.646729;
-	// U[2] = -4.792132;
-	// U[3] = -7.027614;
-	// U[4] = -4.792255;
-	// U[5] = -10.643004;
-	// U[6] = -6.398996;
-
-	// U[0] = -6.340771;
-	// U[1] = -10.646728;
-	// U[2] = -4.776842;
-	// U[3] = -2.108329;
-	// U[4] = -4.776972;
-	// U[5] = -10.643004;
-	// U[6] = -6.340781;
 
 
 	float Jp = computeCost(U, Qp, Fp, Mp, M);
@@ -854,17 +974,13 @@ int main()
 	printf("Jp = %f\n", Jp);
 	printf("Jd = %f\n", Jd);
 
-	// printf("Printing Y*\n");
-	// for(int i=0;i<N;i++)
-	// {
-	// 	printf("%f\n", Y[i]);
-	// }
+	
 	printf("Printing U*\n");
 	for(int i=0;i<M;i++)
 	{
 		printf("\t%f\n", U[i]);
 	}
-
+	// code below for free all dynamic memory used before exist from program
 	free(Qp_inv);
 	free(Qp);
 	free(Fp1);
