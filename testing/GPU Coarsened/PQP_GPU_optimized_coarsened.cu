@@ -1,3 +1,11 @@
+/**************************************************************************
+* This file contains implementation of pqp (parallel quadratic programming)
+* GPU version optimised with TILE and shared memory for MPC Term Project of HP3 Course.
+* Group 7 CSE Dept. IIT KGP
+*	Objective function: 1/2 U'QpU + Fp'U + 1/2 Mp
+*	Constraints: GpU <= Kp
+**************************************************************************/
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
@@ -41,7 +49,7 @@ __global__ void printMat(float *mat, int N, int M)
 
 
 
-__global__ void initMatCuda(float *mat, float val, int N)								// parallel corsening
+__global__ void initMatCuda(float *mat, float val, int N)	//coarsened							// parallel
 {
 	int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
 	int threadNum = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * (blockDim.x) + threadIdx.x;
@@ -55,10 +63,15 @@ __global__ void initMatCuda(float *mat, float val, int N)								// parallel cor
 	}
 }
 
-
+/**************************************************************************
+* This is utility function initialize the matrix
+*   1. Parameter is float type matrix pointer (*mat), float val, 
+*		size of matrix 
+*   2. Return type void
+**************************************************************************/
 void initMat(float *mat, float val, int N)								// parallel
 {
-	dim3 block =512; // 1024
+	dim3 block = 512; //1024;
 	dim3 grid = (N+1024-1)/1024;
 
 	initMatCuda<<<grid, block>>>(mat, val, N);
@@ -82,7 +95,12 @@ float *newMatrixCUDA(int n, int m)
 	return tmp;
 }
 
-
+/**************************************************************************
+* This is utility function for create new  matrix
+*   1. Parameter is (int n, int m) dimension of (n X m matrix) , 
+*	2. Return pointer of new matrix
+*   3. This function create dynamic size matrix using malloc
+**************************************************************************/
 float *newMatrix(int n, int m)			
 {
 	float *tmp = (float *)malloc(n*m*sizeof(float));
@@ -109,7 +127,7 @@ void copyToHost(float *hM, float *dM, int n, int m)
 
 
 
-__global__ void copyMatrixCuda(float *output, float *mat, int a, int b)		// parallel  // corsening
+__global__ void copyMatrixCuda(float *output, float *mat, int a, int b)		// parallel //coarsened
 {
 	int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
 	int threadNum = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * (blockDim.x) + threadIdx.x;
@@ -122,10 +140,17 @@ __global__ void copyMatrixCuda(float *output, float *mat, int a, int b)		// para
 		output[id2] = mat[id2];
 	}
 }
-
+/**************************************************************************
+* This is utility function for generating addition or substraction 
+*	of two matrix
+*   1. Parameter is (pointer of matrix1, pointer of matrix2, int sign,int n int m)
+*		dimension of (n X m matrix) 
+*	2. sign parameters for decide addition or substraction
+*	3. Result write back in matrix1
+**************************************************************************/
 void copyMatrix(float *output, float *mat, int a, int b)		// parallel
 {
-	dim3 block = 512; //1024
+	dim3 block = 512; //1024;
 	dim3 grid = (a*b+1024-1)/1024;
 
 	copyMatrixCuda<<<grid,block>>>(output, mat, a, b);
@@ -221,144 +246,6 @@ __global__ void matrixMultiplyCuda(float *output, float *matrix1, float *matrix2
 	}
 }
 
-  // kernel Inner thread fusion////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-__global__ void matrixMultiplyCuda_computeFp(float *Fp, float *Fp1, float *Fp2, float *x,float *D, float *tmp,float *Fp2x, int a, int b, int d,int c)
-{
-	//declare shared memory matrices for matrix1 and matrix2 matrices
-	__shared__ float shared_mat1_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_mat2_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_mat1_tile1[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_mat2_tile1[TILE_SIZE][TILE_SIZE];
-	int tsize;
-	if(a!=1 && c!=1){	
-	tsize=TILE_SIZE;
-	}
-	else{		
-	tsize=1;
-	}
-	int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
-	int threadNum = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * (blockDim.x) + threadIdx.x;
-	int id = blockNum * (blockDim.x * blockDim.y * blockDim.z) + threadNum;
-
-	int tx = threadIdx.x;
-	int ty = threadIdx.y;
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-
-	//check if thread directly maps to the dimensions of the resulting matrix
-	if (row < a && col < c)
-	{
-		float result = 0.0;
-		float result1 = 0.0;
-		int k;
-		int phase,phase1;
-		
-		//calculate output matrix indexes in phases. Each phase shares 
-		//TILE_SIZE * TILE_SIZE data copied to the shared matrix mat1 
-		//and matrix mat2.
-		for (phase = 0; phase <= b/tsize; phase++)
-		{
-			shared_mat1_tile[ty][tx] = Fp1[row * b + phase * tsize + tx];
-			shared_mat2_tile[ty][tx] = D[(phase * tsize + ty) * c + col];
-			__syncthreads();
-			
-			for (k = 0; k < tsize; k++)
-			{
-				if (k + (phase * tsize) < b) 
-				{
-					result += (shared_mat1_tile[ty][k] * shared_mat2_tile[k][tx]);
-				}
-			}
-			__syncthreads();
-		}	
-		tmp[row * c + col] = result;
-     __syncthreads();
-		for (phase1 = 0; phase1 <= d/tsize; phase1++)
-		{
-			shared_mat1_tile1[ty][tx] = Fp2[row * d + phase1 * tsize + tx];
-			shared_mat2_tile1[ty][tx] = x[(phase1 * tsize + ty) * c + col];
-			__syncthreads();
-			
-			for (k = 0; k < tsize; k++)
-			{
-				if (k + (phase1 * tsize) < d) 
-				{
-					result1 += (shared_mat1_tile1[ty][k] * shared_mat2_tile1[k][tx]);
-				}
-			}
-			__syncthreads();
-		}	
-		Fp2x[row * c + col] = result1;
-		__syncthreads();
-	if(id<a*c)	
-	{
-		Fp[id] =  Fp2x[id]+tmp[id];
-	}
-	}
-}
-
-
-__global__ void matrixMultiplyCuda_computeU(float *U, float *temp, float *Gp, float *Y, float *Qp_inv, float *Fp,int a, int b, int c)
-{
-	//global thread Id
-	  int block = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
-    int thread = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
-    int  globalthreadID= block * (blockDim.x * blockDim.y * blockDim.z) + thread;
-	
-	//declare shared memory matrices for matrix1 and matrix2 matrices
-	__shared__ float shared_mat1_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_mat2_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float result_tile[TILE_SIZE][TILE_SIZE];
-	int tsize;
-	if(a!=1 && c!=1){	
-	tsize=TILE_SIZE;
-	}
-	else{		
-	tsize=1;
-	}
-	
-	int tx = threadIdx.x;
-	int ty = threadIdx.y;
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
- 
-	//check if thread directly maps to the dimensions of the resulting matrix
-	if (row < a && col < c)
-	{
-		float result = 0.0;
-		int k;
-		int phase;
-	
-		
-		//calculate output matrix indexes in phases. Each phase shares 
-		//TILE_SIZE * TILE_SIZE data copied to the shared matrix mat1 
-		//and matrix mat2.
-		for (phase = 0; phase <= b/tsize; phase++)
-		{
-			shared_mat1_tile[ty][tx] = Gp[row * b + phase * tsize + tx];
-			shared_mat2_tile[ty][tx] = Y[(phase * tsize + ty) * c + col];
-			__syncthreads();
-			
-			for (k = 0; k < tsize; k++)
-			{
-				if (k + (phase * tsize) < b) 
-				{
-					result += (shared_mat1_tile[ty][k] * shared_mat2_tile[k][tx]);
-				}
-			}
-			__syncthreads();
-		}	                                                                              
-		result_tile[ty][tx] = result * Fp[globalthreadID];                            
-     __syncthreads();
-		        float Sum=0;
-            for (int i = 0; i < a; i++) {
-            Sum += Qp_inv[row * a + i] * result_tile[ty][tx];
-        }
-    U[row * c + col] = Sum;
-    
-	}
-}
 
 void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int transpose2, int a, int b, int c) 		//mat1-a*b	mat2-b*c 	// parallel
 {
@@ -399,7 +286,7 @@ void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int
 		B_R=1;
 	}
 	dim3 block(B_C,B_R);
-	dim3 grid((int)ceil(c/B_C),(int)ceil(a/B_R));
+	dim3 grid((c+B_C-1)/B_C,(a+B_R-1)/B_R);
 	matrixMultiplyCuda<<<grid, block>>>(output, matrix1, matrix2, a, b, c);
 	
 	if(transpose1 && a!=1 && b!=1)
@@ -416,9 +303,9 @@ void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int
 
 
 
-__global__ void matrixAddCuda(float *A, float *B, float sign, int a, int b) 			// adds b to a 	// parallel //corsening
+__global__ void matrixAddCuda(float *A, float *B, float sign, int a, int b) 			// adds b to a 	// parallel //coarsened
 {
-		int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
+	int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
 	int threadNum = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * (blockDim.x) + threadIdx.x;
 	int id = blockNum * (blockDim.x * blockDim.y * blockDim.z) + threadNum;
 	if(id<a*b)	
@@ -432,7 +319,7 @@ __global__ void matrixAddCuda(float *A, float *B, float sign, int a, int b) 			/
 
 void matrixAdd(float *A, float *B, float sign, int a, int b) 			// adds b to a 	// parallel
 {
-	dim3 block = 512; //1024
+	dim3 block = 512; //1024;
 	dim3 grid = (a*b+1024-1)/1024;
 
 	matrixAddCuda<<<grid,block>>>(A,B,sign,a,b);
@@ -652,22 +539,100 @@ void Gauss_Jordan(float *A,float *res, int N)
 }
 
 
+__global__ void matrixMultiplyCuda_computeU(float *U, float *temp, float *Gp, float *Y, float *Qp_inv, float *Fp,int a, int b, int c)
+{
+  //global thread Id
+    int block = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
+    int thread = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
+    int  globalthreadID= block * (blockDim.x * blockDim.y * blockDim.z) + thread;
 
+  //declare shared memory matrices for matrix1 and matrix2 matrices
+  __shared__ float shared_mat1_tile[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat2_tile[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat1_tile1[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat2_tile1[TILE_SIZE][TILE_SIZE];
+
+  __shared__ float result_tile[TILE_SIZE][TILE_SIZE];
+  int tsize;
+  if(a!=1 && c!=1){
+  tsize=TILE_SIZE;
+  }
+  else{
+  tsize=1;
+  }
+
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+  //check if thread directly maps to the dimensions of the resulting matrix
+  if (row < a && col < c)
+  {
+    float result = 0.0;
+    int k;
+    int phase;
+    int phase1;
+
+    //calculate output matrix indexes in phases. Each phase shares
+    //TILE_SIZE * TILE_SIZE data copied to the shared matrix mat1
+    //and matrix mat2.
+    for (phase = 0; phase <= b/tsize; phase++)
+    {
+      shared_mat1_tile[ty][tx] = Gp[row * b + phase * tsize + tx];
+      shared_mat2_tile[ty][tx] = Y[(phase * tsize + ty) * c + col];
+      __syncthreads();
+
+      for (k = 0; k < tsize; k++)
+      {
+        if (k + (phase * tsize) < b)
+        {
+          result += (shared_mat1_tile[ty][k] * shared_mat2_tile[k][tx]);
+        }
+      }
+      __syncthreads();
+    }
+    temp[row*c+col] = result + Fp[globalthreadID];
+
+    printf("\n  temp[%d]=%f", temp[globalthreadID]);
+     __syncthreads();
+            float Sum=0;
+
+    for (phase1 = 0; phase1 <= a/tsize; phase1++)
+    {
+      shared_mat1_tile1[ty][tx] = temp[row * a + phase1 * tsize + tx];
+      shared_mat2_tile1[ty][tx] = temp[(phase1 * tsize + ty) * c + col];
+      __syncthreads();
+
+      for (k = 0; k < tsize; k++)
+      {
+        if (k + (phase1 * tsize) < a)
+        {
+          Sum += (shared_mat1_tile1[ty][k] * shared_mat2_tile1[k][tx]);
+        }
+      }
+      __syncthreads();
+    }
+
+    U[row * c + col] = Sum;
+    printf("U[%d]=%.2f\n",row * c + col,U[row * c + col]);
+  }
+}
 void computeUfromY(float *U, float *Y, float *Fp, float *Gp, float *Qp_inv, int N, int M)
 {
 	float *tmp = newMatrixCUDA(M,1);
 
 //	matrixMultiply(tmp, Gp, 1, Y, 0, M, N, 1);
 //	matrixAdd(tmp, Fp, 1, M, 1);
-//	matrixMultiply(U, Qp_inv, 0, tmp, 0, M, M, 1);     
+//	matrixMultiply(U, Qp_inv, 0, tmp, 0, M, M, 1);
 	int B_C,B_R;
   if(M!=1)
 	{
 		B_C=BLK_COLS;
 		B_R=BLK_ROWS;
-	}             
-	                                             
-	else{ 
+	}
+
+	else{
 		B_C=1;
 		B_R=1;
 	}
@@ -681,29 +646,10 @@ matrixMultiplyCuda_computeU<<<grid, block>>>(U,tmp,Gp,Y,Qp_inv,Fp, M, N, 1);  //
 
 void computeFp(float *Fp, float *Fp1, float *Fp2, float *Fp3, float *D, float *x)
 {
-/*	matrixMultiply(Fp, Fp1, 0, D, 0, nInput*pHorizon, nDis*pHorizon, 1);
+	matrixMultiply(Fp, Fp1, 0, D, 0, nInput*pHorizon, nDis*pHorizon, 1);
 	float *Fp2x = newMatrixCUDA(nInput*pHorizon,1);
 	matrixMultiply(Fp2x, Fp2, 0, x, 0, nInput*pHorizon, nState, 1);
 	matrixAdd(Fp, Fp2x, 1, nInput*pHorizon, 1);
-
-*/
-
-  float *Fp2x = newMatrixCUDA(nInput*pHorizon,1);
-	float *tmp = newMatrixCUDA(nInput*pHorizon,1);
-  int B_C,B_R;
-  if(nInput*pHorizon!=1 && nDis*pHorizon!=1)
-	{
-		B_C=BLK_COLS;
-		B_R=BLK_ROWS;
-	}             
-	                                             /////////////////////////////////////////////////////////////////////////////////////////////////////
-	else{ 
-		B_C=1;
-		B_R=1;
-	}
-	dim3 block(B_C,B_R);
-	dim3 grid((int)ceil(1/B_C),(int)ceil(nInput*pHorizon/B_R));
-matrixMultiplyCuda_computeFp<<<grid, block>>>(Fp,Fp1,Fp2,x,D,tmp,Fp2x,nInput*pHorizon, nDis*pHorizon,nState, 1);  // kernel Inner thread fusion
 	matrixAdd(Fp, Fp3, -1, nInput*pHorizon, 1);
 	
 	cudaFree(Fp2x);	
@@ -756,7 +702,7 @@ void computeQd(float *Qd, float *Gp_Qp_inv, float *Gp, int N, int M)
 }
 
 void computeFd(float *Fd, float *Gp_Qp_inv, float *Fp, float *Kp, int N, int M)
-{
+{ 
 	matrixMultiply(Fd, Gp_Qp_inv, 0, Fp, 0, N, M, 1);
 	matrixAdd(Fd, Kp, 1, N, 1);
 }
@@ -846,22 +792,115 @@ void updateY1(float *Y_next, float *Y, float alphaY, float *ph, int N)
 	matrixAdd(Y_next, ph, alphaY, N, 1);
 }
 
+__global__ void matrixMultiplyCuda_computeupdateY2(float *numerator, float *denominator, float *Qdn_theta, float *Y,float *Qdp_theta, float *Fdn,float *Fdp, int a, int b, int c)
+{
+  //declare shared memory matrices for matrix1 and matrix2 matrices
+  __shared__ float shared_mat1_tile[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat2_tile[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat1_tile1[TILE_SIZE][TILE_SIZE];
+  __shared__ float shared_mat2_tile1[TILE_SIZE][TILE_SIZE];
+  int tsize;
+  if(a!=1 && c!=1){
+  tsize=TILE_SIZE;
+  }
+  else{
+  tsize=1;
+  }
+  int blockNum = blockIdx.z * (gridDim.x * gridDim.y) + blockIdx.y * gridDim.x + blockIdx.x;
+  int threadNum = threadIdx.z * (blockDim.x * blockDim.y) + threadIdx.y * (blockDim.x) + threadIdx.x;
+  int id = blockNum * (blockDim.x * blockDim.y * blockDim.z) + threadNum;
+
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+  //check if thread directly maps to the dimensions of the resulting matrix
+  if (row < a && col < c)
+  {
+    float result = 0.0;
+    float result1 = 0.0;
+    int k;
+    int phase,phase1;
+
+    //calculate output matrix indexes in phases. Each phase shares
+    //TILE_SIZE * TILE_SIZE data copied to the shared matrix mat1
+    //and matrix mat2.
+    for (phase = 0; phase <= b/tsize; phase++)
+    {
+      shared_mat1_tile[ty][tx] = Qdn_theta[row * b + phase * tsize + tx];
+      shared_mat2_tile[ty][tx] = Y[(phase * tsize + ty) * c + col];
+      __syncthreads();
+
+      for (k = 0; k < tsize; k++)
+      {
+        if (k + (phase * tsize) < b)
+        {
+          result += (shared_mat1_tile[ty][k] * shared_mat2_tile[k][tx]);
+        }
+      }
+      __syncthreads();
+    }
+    numerator[row * c + col] = result;
+     __syncthreads();
+    for (phase1 = 0; phase1 <= b/tsize; phase1++)
+    {
+      shared_mat1_tile1[ty][tx] = Qdp_theta[row * b + phase1 * tsize + tx];
+      shared_mat2_tile1[ty][tx] = Y[(phase1 * tsize + ty) * c + col];
+      __syncthreads();
+
+      for (k = 0; k < tsize; k++)
+      {
+        if (k + (phase1 * tsize) < b)
+        {
+          result1 += (shared_mat1_tile1[ty][k] * shared_mat2_tile1[k][tx]);
+        }
+      }
+      __syncthreads();
+    }
+  denominator[row * c + col] = result1;
+    __syncthreads();
+  if(id<a*c)
+  {
+    numerator[id]+=Fdn[id];
+    denominator[id]+=Fdp[id];
+  }
+  }
+}
+
+
+
 void updateY2(float *Y_next, float *Y, float *Qdp_theta, float *Qdn_theta, float *Fd, float *Fdp, float *Fdn, int N)
 {
-	float *numerator = newMatrixCUDA(N,1);
-	float *denominator = newMatrixCUDA(N,1);
+  float *numerator = newMatrixCUDA(N,1);
+  float *denominator = newMatrixCUDA(N,1);
 
-	matrixMultiply(numerator, Qdn_theta, 0, Y, 0, N, N, 1);
-	matrixMultiply(denominator, Qdp_theta, 0, Y, 0, N, N, 1);
+/*  matrixMultiply(numerator, Qdn_theta, 0, Y, 0, N, N, 1);
+  matrixMultiply(denominator, Qdp_theta, 0, Y, 0, N, N, 1);
 
-	matrixAdd(numerator, Fdn, 1, N, 1);
-	matrixAdd(denominator, Fdp, 1, N, 1);
+  matrixAdd(numerator, Fdn, 1, N, 1);
+  matrixAdd(denominator, Fdp, 1, N, 1);*/
 
-	updY(Y_next, numerator, denominator, Y, N);
+int B_C,B_R;
+  if(N!=1)
+  {
+    B_C=BLK_COLS;
+    B_R=BLK_ROWS;
+  }
+                                              /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  else{
+    B_C=1;
+    B_R=1;
+  }
+  dim3 block(B_C,B_R);
+  dim3 grid(1,(N+B_R-1)/B_R);
+matrixMultiplyCuda_computeupdateY2<<<grid, block>>>(numerator,denominator,Qdn_theta,Y,Qdp_theta,Fdn,Fdp,N,N,1);
+  updY(Y_next, numerator, denominator, Y, N);
 
-	cudaFree(numerator);
-	cudaFree(denominator);
+  cudaFree(numerator);
+  cudaFree(denominator);
 }
+
 
 void computeph(float *ph, float *Qd, float *Y, float *Fd, int N)
 {
@@ -950,8 +989,8 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	long int h=1;
 	float alphaY=0;
 
-//	 while(h<NUM_ITER)
-	while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
+	 while(h<NUM_ITER)
+//	while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
 	{	
 		// if(h>100000) break;
 //		 printf("h %ld\n",h);
@@ -1207,10 +1246,10 @@ int main()
 //	}
 
 //	return 0;
-	int N, M;
+	int N=1000, M=500;
 
-	M = pHorizon*nInput;
-	N = 4*pHorizon*nInput;
+//	M = pHorizon*nInput;
+//	N = 4*pHorizon*nInput;
 
 	// host matrix
 	float *hQp_inv = newMatrix(M,M);

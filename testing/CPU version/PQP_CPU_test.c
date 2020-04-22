@@ -981,10 +981,10 @@ void input(float *Qp_inv, float *Fp, float *Mp, float *Gp, float *Kp, float *x, 
 int main(int argc, char *argv[])
 {
 	
-	int N, M;
-	FILE *fp;
-	fp = fopen(argv[1], "r");
-	fscanf(fp, "%d%d", &M, &N);
+	int N=1000, M=500;
+	// FILE *fp;
+	// fp = fopen(argv[1], "r");
+	// fscanf(fp, "%d%d", &M, &N);
 
 	float *Qp_inv = newMatrix(M,M);
 	float *Qp = newMatrix(M,M);
@@ -1022,8 +1022,8 @@ int main(int argc, char *argv[])
 	float *Y  = newMatrix(N,1);
 	float *U  = newMatrix(M,1);
 
-	input(Qp_inv, Fp, Mp, Gp, Kp, x, D, theta, Z, N, M, fp);
-	fclose(fp);
+	// input(Qp_inv, Fp, Mp, Gp, Kp, x, D, theta, Z, N, M, fp);
+	// fclose(fp);
 	Gauss_Jordan(Qp_inv, Qp, M);
 
 	// computeFp(Fp, Fp1, Fp2, Fp3, D, x);

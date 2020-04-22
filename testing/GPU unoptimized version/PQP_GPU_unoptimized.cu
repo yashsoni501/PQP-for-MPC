@@ -801,11 +801,11 @@ int main(int argc, char *argv[])
 	
 	cudaDeviceReset();
 	 
-	int N, M;
-	FILE *fp;
-	fp = fopen(argv[1], "r");
-	fscanf(fp, "%d%d", &M, &N);
-	fclose(fp);
+	int N = 1000, M=500;
+//	FILE *fp;
+//	fp = fopen(argv[1], "r");
+//	fscanf(fp, "%d%d", &M, &N);
+//	fclose(fp);
 	// host matrix
 	float *hQp_inv = newMatrix(M,M);
 	float *hQp = newMatrix(M,M);
@@ -886,10 +886,10 @@ int main(int argc, char *argv[])
 	D = newMatrixCUDA(nDis*pHorizon,1);
 	x = newMatrixCUDA(nState, 1);	
 
-	input(hQp_inv, hFp, hMp, hGp, hKp, hx, hD, htheta, hZ, N, M, argv[1]);
+//	input(hQp_inv, hFp, hMp, hGp, hKp, hx, hD, htheta, hZ, N, M, argv[1]);
 	float tmp;
-	fscanf(fp, "%f",&tmp);
-	fclose(fp);
+//	fscanf(fp, "%f",&tmp);
+//	fclose(fp);
 	Gauss_Jordan(hQp_inv, hQp, M);
 	copyToDevice(Qp_inv, hQp_inv, M, M);
 	copyToDevice(Qp, hQp, M, M);
