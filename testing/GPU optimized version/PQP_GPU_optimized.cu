@@ -682,7 +682,7 @@ void computealphaY(float *alphaY, float *ph, float *Qd, float *Y, float *Fd, int
 	}
 	else
 	{
-		*alphaY = 0;
+		alphaY = 0;
 	}
 	free(com);
 	cudaFree(temp);

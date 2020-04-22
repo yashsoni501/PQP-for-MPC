@@ -16,12 +16,12 @@
 #define nOutput 7
 #define nDis 1
 
-#define erc 1e-6
-#define eac 1e-6
-#define eaj 1e-6
-#define erj 1e-6
+#define erc 7
+#define eac 100000
+#define eaj 100000
+#define erj 7
 
-#define NUM_ITER 1000
+#define NUM_ITER 100
 
 
 /**************************************************************************
@@ -237,7 +237,7 @@ void diagonalAdd(float *theta, float *tmp, int N)
 	for(int i=0;i<N;i++)
 	{
 		// printf("tmp %f\n",tmp[i]);
-		theta[i*N+i] = max(tmp[i],5);
+		theta[i*N+i] = max(tmp[i],100);
 	}
 }
 /**************************************************************************
@@ -565,7 +565,7 @@ void computealphaY(float *alphaY, float *ph, float *Qd, float *Y, float *Fd, int
 	}
 	else
 	{
-		*alphaY = 0;
+		alphaY = 0;
 	}
 
 	free(temp);
@@ -714,15 +714,19 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	long int h=1;
 	float alphaY=0;
 
-	
-	while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
+	while(h<NUM_ITER)
+	// while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
 	{	
 		
 		if(1)
 		{
+			// float J1 = computeCost(Y, Qd, Fd, Md, N);
 			
 			updateY2(Y_next, Y, Qdp_theta, Qdn_theta, Fd, Fdp, Fdn, N);			
+			// float J2 = computeCost(Y_next, Qd, Fd, Md, N);
 			
+			// printf("J1 %f\n",J1);
+			// printf("J2 %f\n",J2);
 		}
 		else
 		{
@@ -730,10 +734,10 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 			computeph(ph, Qd, Y, Fd, N);
 			computealphaY(&alphaY, ph, Qd, Y, Fd, N);	
 			
-			updateY1(Y_next, Y, alphaY, ph, N);
+			updateY1(Y_next, Y, alphaY/10, ph, N);
 
 		}
-
+		// printf("h = %d\n", h);
 		copyMatrix(Y, Y_next, N, 1);
 		
 		h++;
@@ -754,194 +758,245 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 *  1. Pointer of variables use for store value
 *  2. input file kept in folder (examples) in inside the same folder where codes kept
 **************************************************************************/
-void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, float * Mp2, float * Mp3, float* Mp4, float* Mp5, float* Mp6, float* Gp, float* Kp, float* x, float* D, float* theta, float* Z)
+// void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, float * Mp2, float * Mp3, float* Mp4, float* Mp5, float* Mp6, float* Gp, float* Kp, float* x, float* D, float* theta, float* Z)
+// {
+// 	FILE *fptr;
+// 	int i,j;
+// 	float num;
+
+// 	//Fill Qp_inverse	
+// 	fptr = fopen("./example/Qp_inv.txt","r");
+// 	for(i=0;i<pHorizon*nInput;i++)
+// 	{
+// 		for(j=0;j<pHorizon*nInput;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			qp_inv[j*pHorizon*nInput+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Fp1
+// 	fptr = fopen("./example/Fp1.txt","r");
+// 	for(i=0;i<nDis*pHorizon;i++)
+// 	{
+// 		for(j=0;j<nInput*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Fp1[j*nDis*pHorizon+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Fp2
+// 	fptr = fopen("./example/Fp2.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		for(j=0;j<nInput*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Fp2[j*nState+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Fp3
+// 	fptr = fopen("./example/Fp3.txt","r");
+// 	for(j=0;j<nInput*pHorizon;j++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		Fp3[j] = num;
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp1
+// 	fptr = fopen("./example/Mp1.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		for(j=0;j<nState;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Mp1[j*nState+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp2
+// 	fptr = fopen("./example/Mp2.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		for(j=0;j<nDis*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Mp2[j*nState+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp3
+// 	fptr = fopen("./example/Mp3.txt","r");
+// 	for(i=0;i<nDis*pHorizon;i++)
+// 	{
+// 		for(j=0;j<nDis*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Mp3[j*nDis*pHorizon+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp4
+// 	fptr = fopen("./example/Mp4.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		Mp4[i] = num;
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp5
+// 	fptr = fopen("./example/Mp5.txt","r");
+// 	for(i=0;i<nDis*pHorizon;i++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		Mp5[i] = num;
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Mp6
+// 	fptr = fopen("./example/Mp6.txt","r");
+// 	fscanf(fptr,"%f", &num);
+// 	Mp6[0] = num;
+// 	fclose(fptr);
+
+// 	//Fill Gp
+// 	fptr = fopen("./example/Gp.txt","r");
+// 	for(i=0;i<pHorizon*nInput;i++)
+// 	{
+// 		for(j=0;j<4*pHorizon*nInput;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Gp[j*pHorizon*nInput+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Kp
+// 	fptr = fopen("./example/Kp.txt","r");
+// 	for(i=0;i<4*pHorizon*nInput;i++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		Kp[i] = num;
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Z
+// 	fptr = fopen("./example/Z.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		for(j=0;j<nOutput*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			Z[j*nState+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill Theta
+// 	fptr = fopen("./example/Theta.txt","r");
+// 	for(i=0;i<nDis*pHorizon;i++)
+// 	{
+// 		for(j=0;j<nOutput*pHorizon;j++)
+// 		{
+// 			fscanf(fptr,"%f", &num);
+// 			theta[j*nDis*pHorizon+i] = num;
+// 		}
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill D
+// 	fptr = fopen("./example/D.txt","r");
+// 	for(i=0;i<nDis*pHorizon;i++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		D[i] = num;
+// 	}
+// 	fclose(fptr);
+
+// 	//Fill x
+// 	fptr = fopen("./example/x.txt","r");
+// 	for(i=0;i<nState;i++)
+// 	{
+// 		fscanf(fptr,"%f", &num);
+// 		x[i] = num;
+// 	}
+// 	fclose(fptr);
+// }
+
+void input(float *Qp_inv, float *Fp, float *Mp, float *Gp, float *Kp, float *x, float *D, float *theta, float *Z, int N, int M, FILE *fp)
 {
-	FILE *fptr;
-	int i,j;
-	float num;
-
-	//Fill Qp_inverse	
-	fptr = fopen("./example/Qp_inv.txt","r");
-	for(i=0;i<pHorizon*nInput;i++)
+	for(int i=0;i<M;i++)
 	{
-		for(j=0;j<pHorizon*nInput;j++)
+		fscanf(fp, "%f", &Qp_inv[i*M+i]);
+	}
+
+	for(int i=0;i<M;i++)
+	{
+		fscanf(fp, "%f", &Fp[i]);
+	}
+
+ 	fscanf(fp, "%f", Mp);
+
+	for(int i=0;i<N;i++)
+	{
+		fscanf(fp, "%f", &Kp[i]);
+	}
+
+	for(int i=0;i<N;i++)
+	{
+		Kp[i] = fabs(10.0*rand()/RAND_MAX);
+		for(int j=0;j<M;j++)
 		{
-			fscanf(fptr,"%f", &num);
-			qp_inv[j*pHorizon*nInput+i] = num;
+			int tmp;
+			fscanf(fp, "%d",&tmp);
+			if(tmp%3 == 0)
+			{
+				Gp[i*M+j] = 0;
+			}
+			else if(tmp%3==2)
+			{
+				Gp[i*M+j] = -1;
+			}
+			else
+			{
+				Gp[i*M+j] = 1;
+			}
 		}
 	}
-	fclose(fptr);
-
-	//Fill Fp1
-	fptr = fopen("./example/Fp1.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nInput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Fp1[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Fp2
-	fptr = fopen("./example/Fp2.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nInput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Fp2[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Fp3
-	fptr = fopen("./example/Fp3.txt","r");
-	for(j=0;j<nInput*pHorizon;j++)
-	{
-		fscanf(fptr,"%f", &num);
-		Fp3[j] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp1
-	fptr = fopen("./example/Mp1.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nState;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp1[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp2
-	fptr = fopen("./example/Mp2.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nDis*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp2[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp3
-	fptr = fopen("./example/Mp3.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nDis*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp3[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp4
-	fptr = fopen("./example/Mp4.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Mp4[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp5
-	fptr = fopen("./example/Mp5.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Mp5[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp6
-	fptr = fopen("./example/Mp6.txt","r");
-	fscanf(fptr,"%f", &num);
-	Mp6[0] = num;
-	fclose(fptr);
-
-	//Fill Gp
-	fptr = fopen("./example/Gp.txt","r");
-	for(i=0;i<pHorizon*nInput;i++)
-	{
-		for(j=0;j<4*pHorizon*nInput;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Gp[j*pHorizon*nInput+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Kp
-	fptr = fopen("./example/Kp.txt","r");
-	for(i=0;i<4*pHorizon*nInput;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Kp[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Z
-	fptr = fopen("./example/Z.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nOutput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Z[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Theta
-	fptr = fopen("./example/Theta.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nOutput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			theta[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill D
-	fptr = fopen("./example/D.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		D[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill x
-	fptr = fopen("./example/x.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		x[i] = num;
-	}
-	fclose(fptr);
 }
 
 /**************************************************************************
 * This driver function
 **************************************************************************/
-int main()
+int main(int argc, char *argv[])
 {
 	
 	int N, M;
-
-	M = pHorizon*nInput;
-	N = 4*pHorizon*nInput;
+	FILE *fp;
+	fp = fopen(argv[1], "r");
+	fscanf(fp, "%d%d", &M, &N);
 
 	float *Qp_inv = newMatrix(M,M);
 	float *Qp = newMatrix(M,M);
+
+	float *Fp = newMatrix(M,1);
+	float *Mp = newMatrix(1,1);
+	float *Gp;
+	float *Kp;
+	float *x;
+	float *D; 
+	float *theta; 
+	float *Z; 
 
 	float *Fp1;
 	float *Fp2;
@@ -954,26 +1009,8 @@ int main()
 	float *Mp5;
 	float *Mp6;
 
-	float *Fp = newMatrix(nInput*pHorizon,1);
-	float *Mp = newMatrix(1,1);
-	float *Gp;
-	float *Kp;
-	float *x;
-	float *D; 
-	float *theta; 
-	float *Z; 
-
-	Fp1 = newMatrix(nInput*pHorizon, nDis*pHorizon);
-	Fp2 = newMatrix(nInput*pHorizon, nState);
-	Fp3 = newMatrix(1, nInput*pHorizon);
-	Mp1 = newMatrix(nState, nState);
-	Mp2 = newMatrix(nDis*pHorizon, nState);
-	Mp3 = newMatrix(nDis*pHorizon, nDis*pHorizon);
-	Mp4 = newMatrix(1, nState);
-	Mp5 = newMatrix(1, nDis*pHorizon);
-	Mp6 = newMatrix(1,1);
-	Gp = newMatrix(4*pHorizon*nInput, nInput*pHorizon);
-	Kp = newMatrix(1,4*pHorizon*nInput);
+	Gp = newMatrix(N,M);
+	Kp = newMatrix(N,1);
 	Z = newMatrix(nOutput*pHorizon, nState);
 	theta = newMatrix(nOutput*pHorizon, nDis*pHorizon);
 	D = newMatrix(nDis*pHorizon,1);
@@ -985,11 +1022,12 @@ int main()
 	float *Y  = newMatrix(N,1);
 	float *U  = newMatrix(M,1);
 
-	input(Qp_inv, Fp1, Fp2, Fp3, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, Gp, Kp, x, D, theta, Z);
+	input(Qp_inv, Fp, Mp, Gp, Kp, x, D, theta, Z, N, M, fp);
+	fclose(fp);
 	Gauss_Jordan(Qp_inv, Qp, M);
 
-	computeFp(Fp, Fp1, Fp2, Fp3, D, x);
-	computeMp(Mp, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, x);
+	// computeFp(Fp, Fp1, Fp2, Fp3, D, x);
+	// computeMp(Mp, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, x);
 	
 	convertToDual(Qd, Fd, Md, Qp_inv, Gp, Kp, Fp, Mp, N, M);
 	
@@ -1014,23 +1052,12 @@ int main()
 	// code below for free all dynamic memory used before exist from program
 	free(Qp_inv);
 	free(Qp);
-	free(Fp1);
-	free(Fp2);
-	free(Fp3);
-	free(Mp1);
-	free(Mp2);
-	free(Mp3);
-	free(Mp4);
-	free(Mp5);
-	free(Mp6); 
+	
 	free(Fp);
 	free(Mp);
 	free(Gp);
 	free(Kp);
-	free(x);
-	free(D);
-	free(theta);
-	free(Z);
+	
 
 	free(Qd);
 	free(Fd);

@@ -1,18 +1,17 @@
 /**************************************************************************
 * This file contains implementation of pqp (parallel quadratic programming)
-* GPU version optimised with TILE and shared memory for MPC Term Project of HP3 Course.
+* GPU version unoptimised (Basic) for MPC Term Project of HP3 Course.
 * Group 7 CSE Dept. IIT KGP
 *	Objective function: 1/2 U'QpU + Fp'U + 1/2 Mp
 *	Constraints: GpU <= Kp
 **************************************************************************/
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
 #include<cuda.h>
 #include<cuda_runtime.h>
 
-#define NUM_ITER 1000
+#define NUM_ITER 100
 
 #define pHorizon 1
 #define nState 29
@@ -20,18 +19,10 @@
 #define nOutput 7
 #define nDis 1
 
-#define erc 1e-6
-#define eac 1e-6
-#define eaj 1e-6
-#define erj 1e-6
-
-#define TILE_DIM 32
-#define BLOCK_ROWS 8
-#define BLOCK_SIZE 16
-#define BLK_ROWS 32
-#define BLK_COLS 32
-//size of the share memory tile in the device
-#define TILE_SIZE BLK_ROWS
+#define erc 7
+#define eac 100000
+#define eaj 100000
+#define erj 7
 
 __global__ void printMat(float *mat, int N, int M)
 {
@@ -91,7 +82,6 @@ float *newMatrixCUDA(int n, int m)
 	initMat(tmp, 0, n*m);
 	return tmp;
 }
-
 /**************************************************************************
 * This is utility function for create new  matrix
 *   1. Parameter is (int n, int m) dimension of (n X m matrix) , 
@@ -147,99 +137,38 @@ void copyMatrix(float *output, float *mat, int a, int b)
 
 __global__ void transposeCuda(float *odata, float *idata, int n, int m)
 {
-  __shared__ float tile[TILE_DIM][TILE_DIM+1];
-    
-  int x = blockIdx.x * TILE_DIM + threadIdx.x;
-  int y = blockIdx.y * TILE_DIM + threadIdx.y;
-  //int width = gridDim.x * TILE_DIM;
-
-  for(int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
-  {
-	if(x<m && y<n)
-	{
-     tile[threadIdx.x][threadIdx.y] = idata[y*m+x];
-	}
-  }
- 
-  __syncthreads();
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	
-  x = blockIdx.y * TILE_DIM + threadIdx.x;  // transpose block offset
-  y = blockIdx.x * TILE_DIM + threadIdx.y;
-
-  for(int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
-  {
-	if(y<m && x<n){
-     odata[(y*n) + x] = tile[threadIdx.y][threadIdx.x];
-	 }
-  }
-  
+	if(x<n && y<m)
+		odata[y*n+x] = idata[x*m+y];
 }
-
-
 
 void transpose(float *odata, float *idata, int n, int m)
 {
-	dim3 grid((n+TILE_DIM-1)/TILE_DIM, (m+TILE_DIM-1)/TILE_DIM, 1);
-	dim3 block(TILE_DIM, TILE_DIM, 1);
-
+	dim3 block(32,32,1);
+	dim3 grid((n+31)/32, (m+31)/32);
 	
 	transposeCuda<<<grid,block>>>(odata,idata,n,m);
 }
 
-__global__ void matrixMultiplyCuda(float *output, float *matrix1, float *matrix2, int a, int b, int c)
-{
-	//declare shared memory matrices for matrix1 and matrix2 matrices
-	__shared__ float shared_mat1_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_mat2_tile[TILE_SIZE][TILE_SIZE];
-	int tsize;
-	if(a!=1 && c!=1){	
-	tsize=TILE_SIZE;
-	}
-	else{		
-	tsize=1;
-	}
-	
-	int tx = threadIdx.x;
-	int ty = threadIdx.y;
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
 
-	//check if thread directly maps to the dimensions of the resulting matrix
-	if (row < a && col < c)
-	{
-		float result = 0.0;
-		int k;
-		int phase;
+
+__global__ void matrixMultiplyCuda(float *output, float *matrix1, float *matrix2, int a, int b, int c) 		//mat1-a*b	mat2-b*c
+{		
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
 		
-		//calculate output matrix indexes in phases. Each phase shares 
-		//TILE_SIZE * TILE_SIZE data copied to the shared matrix mat1 
-		//and matrix mat2.
-		for (phase = 0; phase <= b/tsize; phase++)
+	if(x<a && y<c)
+	{
+		float val = 0;
+		for(int k=0;k<b;k++)
 		{
-			if(phase*tsize+tx < b)
-				shared_mat1_tile[ty][tx] = matrix1[row * b + phase * tsize + tx];
-			else
-				shared_mat1_tile[ty][tx] = 0;
-			if(phase*tsize+ty < b)
-				shared_mat2_tile[ty][tx] = matrix2[(phase * tsize + ty) * c + col];
-			else
-				shared_mat2_tile[ty][tx] = 0;
-
-			__syncthreads();
-			
-			for (k = 0; k < tsize; k++)
-			{
-				if (k + (phase * tsize) < b) 
-				{
-					result += (shared_mat1_tile[ty][k] * shared_mat2_tile[k][tx]);
-				}
-			}
-			__syncthreads();
-		}	
-		output[row * c + col] = result;
+			val += matrix1[x*b+k]*matrix2[k*c+y];
+		}
+		output[x*c+y] = val;
 	}
 }
-
 
 void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int transpose2, int a, int b, int c) 		//mat1-a*b	mat2-b*c 	
 {
@@ -269,18 +198,9 @@ void matrixMultiply(float *output, float *mat1, int transpose1, float *mat2, int
 	{
 		matrix2 = mat2;
 	}
-	int B_C, B_R;
-	if(a!=1 && c!=1)
-	{
-		B_C=BLK_COLS;
-		B_R=BLK_ROWS;
-	}
-	else{
-		B_C=1;
-		B_R=1;
-	}
-	dim3 block(B_C,B_R);
-	dim3 grid((c+B_C-1)/B_C,(a+B_R-1)/B_R);
+	
+	dim3 block(32,32,1);
+	dim3 grid((a+31)/32, (c+31)/32);
 	matrixMultiplyCuda<<<grid, block>>>(output, matrix1, matrix2, a, b, c);
 	
 	if(transpose1 && a!=1 && b!=1)
@@ -396,7 +316,6 @@ __global__ void diagonalAddCuda(float *theta, float *tmp, int N)
 	int id = blockNum * (blockDim.x * blockDim.y * blockDim.z) + threadNum;
 	if(id<N)	
 	{
-		// printf("tmp %f\n",tmp[i]);
 		theta[id*N+id] = fmaxf(tmp[id],5.0);
 	}
 }
@@ -568,6 +487,7 @@ void computeMp(float *Mp, float *Mp1, float *Mp2, float *Mp3, float *Mp4, float 
 	matrixMultiply(tmp, tmp, 0, x, 0, 1, nState, 1);
 
 	matrixAdd(Mp, tmp, 0.5, 1,1);
+//	printMat<<<1,1>>>(Mp, 1, 1);
 
 	matrixMultiply(tmp, D, 1, Mp2, 0, 1, nDis*pHorizon, nState);
 	matrixMultiply(tmp, tmp, 0, x, 0, 1, nState, 1);
@@ -682,7 +602,7 @@ void computealphaY(float *alphaY, float *ph, float *Qd, float *Y, float *Fd, int
 	}
 	else
 	{
-		*alphaY = 0;
+		alphaY = 0;
 	}
 	free(com);
 	cudaFree(temp);
@@ -791,12 +711,12 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	computeQdn_theta(Qdn_theta, Qd, theta, N);
 
 	initMat(Y, 1000.0, N);
-	// for(int i=0;i<N;i++) Y[i] = i+1;
 
 	float *ph = newMatrixCUDA(N,1);
 	long int h=1;
 
-	while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
+	while(h<NUM_ITER)
+	//while(!terminate(Y, Qd, Fd, Md, U, Qp, Qp_inv, Fp, Mp, Gp, Kp, N, M))
 	{	
 		if(1)
 		{
@@ -814,6 +734,7 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 //		}
 
 		copyMatrix(Y, Y_next, N, 1);
+
 		h++;
 	}
 	printf("Printing number of iterations = %ld\n",h);
@@ -827,194 +748,64 @@ void solveQuadraticDual(float *Y, float *Qd, float *Fd, float *Md, float *U, flo
 	cudaFree(Fdn);
 }
 
-void input(float* qp_inv, float* Fp1, float* Fp2, float * Fp3, float * Mp1, float * Mp2, float * Mp3, float* Mp4, float* Mp5, float* Mp6, float* Gp, float* Kp, float* x, float* D, float* theta, float* Z)
+void input(float *Qp_inv, float *Fp, float *Mp, float *Gp, float *Kp, float *x, float *D, float *theta, float *Z, int N, int M, char *fi)
 {
-	FILE *fptr;
-	int i,j;
-	float num;
-
-	//Fill Qp_inverse	
-	fptr = fopen("./example/Qp_inv.txt","r");
-	for(i=0;i<pHorizon*nInput;i++)
+	int tmp;
+	FILE *fp = fopen(fi, "r");
+	fscanf(fp, "%d%d", &tmp,&tmp);
+	for(int i=0;i<M;i++)
 	{
-		for(j=0;j<pHorizon*nInput;j++)
+		fscanf(fp, "%f", &Qp_inv[i*M+i]);
+	}
+
+	for(int i=0;i<M;i++)
+	{
+		fscanf(fp, "%f", &Fp[i]);
+	}
+
+ 	fscanf(fp, "%f", Mp);
+
+	for(int i=0;i<N;i++)
+	{
+		fscanf(fp, "%f", &Kp[i]);
+	}
+
+	for(int i=0;i<N;i++)
+	{
+		Kp[i] = fabs(10.0*rand()/RAND_MAX);
+		for(int j=0;j<M;j++)
 		{
-			fscanf(fptr,"%f", &num);
-			qp_inv[j*pHorizon*nInput+i] = num;
+			int tmp;
+			fscanf(fp, "%d",&tmp);
+			if(tmp%3 == 0)
+			{
+				Gp[i*M+j] = 0;
+			}
+			else if(tmp%3==2)
+			{
+				Gp[i*M+j] = -1;
+			}
+			else
+			{
+				Gp[i*M+j] = 1;
+			}
 		}
 	}
-	fclose(fptr);
-
-	//Fill Fp1
-	fptr = fopen("./example/Fp1.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nInput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Fp1[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Fp2
-	fptr = fopen("./example/Fp2.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nInput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Fp2[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Fp3
-	fptr = fopen("./example/Fp3.txt","r");
-	for(j=0;j<nInput*pHorizon;j++)
-	{
-		fscanf(fptr,"%f", &num);
-		Fp3[j] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp1
-	fptr = fopen("./example/Mp1.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nState;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp1[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp2
-	fptr = fopen("./example/Mp2.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nDis*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp2[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp3
-	fptr = fopen("./example/Mp3.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nDis*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Mp3[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Mp4
-	fptr = fopen("./example/Mp4.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Mp4[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp5
-	fptr = fopen("./example/Mp5.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Mp5[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Mp6
-	fptr = fopen("./example/Mp6.txt","r");
-	fscanf(fptr,"%f", &num);
-	Mp6[0] = num;
-	fclose(fptr);
-
-	//Fill Gp
-	fptr = fopen("./example/Gp.txt","r");
-	for(i=0;i<pHorizon*nInput;i++)
-	{
-		for(j=0;j<4*pHorizon*nInput;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Gp[j*pHorizon*nInput+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Kp
-	fptr = fopen("./example/Kp.txt","r");
-	for(i=0;i<4*pHorizon*nInput;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		Kp[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill Z
-	fptr = fopen("./example/Z.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		for(j=0;j<nOutput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			Z[j*nState+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill Theta
-	fptr = fopen("./example/Theta.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		for(j=0;j<nOutput*pHorizon;j++)
-		{
-			fscanf(fptr,"%f", &num);
-			theta[j*nDis*pHorizon+i] = num;
-		}
-	}
-	fclose(fptr);
-
-	//Fill D
-	fptr = fopen("./example/D.txt","r");
-	for(i=0;i<nDis*pHorizon;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		D[i] = num;
-	}
-	fclose(fptr);
-
-	//Fill x
-	fptr = fopen("./example/x.txt","r");
-	for(i=0;i<nState;i++)
-	{
-		fscanf(fptr,"%f", &num);
-		x[i] = num;
-	}
-	fclose(fptr);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	// QP is of parametric from 
 	// J(U) = min U 1/2*U'QpU + Fp'U + 1/2*Mp
 	// st GpU <= Kp
 	
 	cudaDeviceReset();
-
+	 
 	int N, M;
-
-	M = pHorizon*nInput;
-	N = 4*pHorizon*nInput;
-
+	FILE *fp;
+	fp = fopen(argv[1], "r");
+	fscanf(fp, "%d%d", &M, &N);
+	fclose(fp);
 	// host matrix
 	float *hQp_inv = newMatrix(M,M);
 	float *hQp = newMatrix(M,M);
@@ -1030,7 +821,7 @@ int main()
 	float *hMp5;
 	float *hMp6;
 
-	float *hFp = newMatrix(nInput*pHorizon,1);
+	float *hFp = newMatrix(M,1);
 	float *hMp = newMatrix(1,1);
 	float *hGp;
 	float *hKp;
@@ -1048,8 +839,8 @@ int main()
 	hMp4 = newMatrix(1, nState);
 	hMp5 = newMatrix(1, nDis*pHorizon);
 	hMp6 = newMatrix(1,1);
-	hGp = newMatrix(4*pHorizon*nInput, nInput*pHorizon);
-	hKp = newMatrix(1,4*pHorizon*nInput);
+	hGp = newMatrix(N,M);
+	hKp = newMatrix(N,1);
 	hZ = newMatrix(nOutput*pHorizon, nState);
 	htheta = newMatrix(nOutput*pHorizon, nDis*pHorizon);
 	hD = newMatrix(nDis*pHorizon,1);
@@ -1070,7 +861,7 @@ int main()
 	float *Mp5;
 	float *Mp6;
 
-	float *Fp = newMatrixCUDA(nInput*pHorizon,1);
+	float *Fp = newMatrixCUDA(M,1);
 	float *Mp = newMatrixCUDA(1,1);
 	float *Gp;
 	float *Kp;
@@ -1088,14 +879,17 @@ int main()
 	Mp4 = newMatrixCUDA(1, nState);
 	Mp5 = newMatrixCUDA(1, nDis*pHorizon);
 	Mp6 = newMatrixCUDA(1,1);
-	Gp = newMatrixCUDA(4*pHorizon*nInput, nInput*pHorizon);
-	Kp = newMatrixCUDA(1,4*pHorizon*nInput);
+	Gp = newMatrixCUDA(N,M);
+	Kp = newMatrixCUDA(N,1);
 	Z = newMatrixCUDA(nOutput*pHorizon, nState);
 	theta = newMatrixCUDA(nOutput*pHorizon, nDis*pHorizon);
 	D = newMatrixCUDA(nDis*pHorizon,1);
 	x = newMatrixCUDA(nState, 1);	
 
-	input(hQp_inv, hFp1, hFp2, hFp3, hMp1, hMp2, hMp3, hMp4, hMp5, hMp6, hGp, hKp, hx, hD, htheta, hZ);
+	input(hQp_inv, hFp, hMp, hGp, hKp, hx, hD, htheta, hZ, N, M, argv[1]);
+	float tmp;
+	fscanf(fp, "%f",&tmp);
+	fclose(fp);
 	Gauss_Jordan(hQp_inv, hQp, M);
 	copyToDevice(Qp_inv, hQp_inv, M, M);
 	copyToDevice(Qp, hQp, M, M);
@@ -1115,8 +909,8 @@ int main()
 	copyToDevice(theta, htheta, nOutput*pHorizon, nDis*pHorizon);
 	copyToDevice(x, hx, nState, 1);
 
-	computeFp(Fp, Fp1, Fp2, Fp3, D, x);
-	computeMp(Mp, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, x);
+	//computeFp(Fp, Fp1, Fp2, Fp3, D, x);
+	//computeMp(Mp, Mp1, Mp2, Mp3, Mp4, Mp5, Mp6, D, x);
 
 	// matrices and vectors required for dual form of QP
 	float *Qd = newMatrixCUDA(N,N);

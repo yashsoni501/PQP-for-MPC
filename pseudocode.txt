@@ -1,0 +1,35 @@
+******************************************************************
+
+// type of QP 			1/2*U'*Qp*U + Fp'*U + 1/2*Mp
+// 				Gp'U <= Kp
+
+read Qp, Fp, Mp, Gp, Kp
+
+// convert to dual form 	1/2*Y'*Qd*Y + Fd'*Y + 1/2*Md
+//				Y > 0
+
+compute Qd, Fd, Md using Qp, Fp, Mp, Gp, Kp
+Qd = Gp*Qp_inv*Gp'
+Fd = (Kp + Gp*Qp_inv*Fp)
+
+h=1
+
+while not converged:
+
+	update Y using update rule: Y{h+1}(i) = [(Qd- + theta)*Y{h} + F-]/[(Qd+ + theta)*Y{h} + F+]*Y{h}(i)
+	// where Qd-(i)(j) = max(0,-Qd(i)(j)
+	// where Qd+(i)(j) = max(0, Qd(i)(j)
+	// theta is a matrix such that theta(i)(i) >= Qd-(i)(i)
+
+	h = h+1
+
+compute U* using Y* according to the rule U* = -Qp_inv*(Fp + Gp'Y*)
+
+******************************************************************
+
+convergence check:- 	GpU <= Kp + max(erc*|Kp|, eac[1])
+			-Jd <= Jp
+			Jp + Jd <= eaj
+			(Jp + Jd)/abs(Jd) <= eaj
+
+******************************************************************
